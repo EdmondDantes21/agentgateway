@@ -1,0 +1,26 @@
+# HTTPRoute — routes everything arriving on the Gateway to the k8s-a2a-agent.
+#
+# The agent is a plain HTTP/JSONRPC (A2A) server on port 8080. Its agent card
+# is at /.well-known/agent-card.json and JSONRPC calls hit the root path, so we
+# forward all paths unmodified. JWT auth is applied at the Gateway level by the
+# AgentgatewayPolicy, so it protects this route (and any future route) too.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: k8s-a2a-agent
+  namespace: kagent
+spec:
+  parentRefs:
+    - name: agent-gateway
+      # attach to the HTTP listener defined in 00-gateway.yaml
+      sectionName: http
+  # No `hostnames`: match on any Host header. Set one here (e.g.
+  # "k8s-a2a-agent.krateo.io") if you want host-based routing.
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: k8s-a2a-agent
+          port: 8080

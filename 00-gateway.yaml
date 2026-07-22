@@ -1,0 +1,24 @@
+# Gateway — the agentgateway data-plane proxy that fronts the A2A agent.
+#
+# Creating this Gateway against the `agentgateway` GatewayClass makes the
+# agentgateway controller (agentgateway-system, v1.3.1) auto-provision a
+# proxy Deployment + Service in this namespace. All traffic to the k8s-a2a
+# agent will pass through here, where the JWT policy (02-jwt-policy.yaml) is
+# enforced.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: agent-gateway
+  namespace: kagent
+spec:
+  gatewayClassName: agentgateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080
+      allowedRoutes:
+        # Routes may only attach from this namespace. The agent Service and the
+        # HTTPRoute both live in `kagent`, so no cross-namespace grant is needed
+        # for routing (the JWKS fetch is the only cross-namespace hop).
+        namespaces:
+          from: Same
