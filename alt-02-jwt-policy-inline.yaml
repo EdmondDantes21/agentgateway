@@ -1,0 +1,34 @@
+# ALTERNATIVE to 02-jwt-policy.yaml — inline JWKS instead of remote fetch.
+#
+# Same JWT validation, but the authn public key is pasted directly into the
+# policy. No cross-namespace JWKS fetch, so 03-referencegrant.yaml is NOT
+# needed with this variant. Trade-off: no automatic key rotation — if authn's
+# signing key changes, this JWKS must be updated by hand.
+#
+# The `keys` below were captured from authn's live endpoint:
+#   krateo-system/authn:8082 /.well-known/jwks.json
+# (kty=RSA, use=sig, alg=RS256, kid=krateo-authn-key-1). Re-pull and replace
+# if the key is rotated:
+#   kubectl -n krateo-system port-forward svc/authn 8082:8082
+#   curl -s localhost:8082/.well-known/jwks.json | jq
+#
+# Apply EITHER this file OR 02-jwt-policy.yaml (they share the name authn-jwt),
+# not both.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: authn-jwt
+  namespace: kagent
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-gateway
+  traffic:
+    jwtAuthentication:
+      mode: Strict
+      providers:
+        - issuer: "krateo.io"
+          jwks:
+            inline: |
+              {"keys":[{"kty":"RSA","use":"sig","alg":"RS256","kid":"krateo-authn-key-1","n":"w90IgMKp0tYO_nDfmabMx831l849b3FVHzBMUdFsePJ7x5EWk02GZMljgIwhny9LRU4cSPbH7EQSFXKwblAqbifuDmIvDMnIZ7DZYHgCF9fCj3Txauh6i2kozkUcYjzttZuQ9RX8N-GE79IBWt-rVuPf1dMVTbE0UOuc84hbco3Cazccg1IxoyBsvt671Zj-2qZzd0oX4Ny5WMjjST35sBZ5GyZ0FNFf2g9vMrpjNAeYWzvZigQYrQchsbkZHdNab65KRu8w22En-nOVLjKHwQATyegD1FUksJ4-PSHuUev0_HniublwRbufJ9ZfwSYyvOYV-IHyf3bxib_8_2Z9ww","e":"AQAB"}]}

@@ -1,0 +1,30 @@
+# OPTIONAL — claim-based RBAC on top of JWT authentication.
+#
+# JWT auth (02-jwt-policy.yaml) proves *who* the caller is by validating the
+# token. This policy decides *whether* they may proceed, using the claims the
+# JWT layer stashed on the request. authn emits a `groups` array, so we can
+# require membership in a group.
+#
+# `Require` = deny-by-default: the request is allowed only if EVERY require
+# rule matches. A CEL expression that fails to evaluate (e.g. no token, missing
+# claim) does not match, so unauthenticated/ungrouped requests are rejected.
+#
+# Adjust the group name ("admins") to whatever authn issues for your users.
+# Apply this only after confirming the JWT policy works.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: authn-jwt-rbac
+  namespace: kagent
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-gateway
+  traffic:
+    authorization:
+      action: Require
+      policy:
+        matchExpressions:
+          # jwt.groups is the decoded `groups` claim from the validated token.
+          - 'jwt.groups.exists(g, g == "admins")'
