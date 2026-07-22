@@ -1,0 +1,49 @@
+# AgentgatewayPolicy — JWT authentication using Krateo `authn` as the issuer.
+#
+# authn signs RS256 tokens (kid=krateo-authn-key-1, iss=krateo.io) and publishes
+# the public key as a JWKS at /.well-known/jwks.json on its Service
+# (krateo-system/authn:8082). This policy points agentgateway's *remote* JWKS
+# fetcher at that endpoint, so key rotation is picked up automatically on the
+# next refetch (every cacheDuration) — no manual key copying.
+#
+# Because the JWKS Service lives in a different namespace (krateo-system) than
+# this policy (kagent), the cross-namespace reference is authorized by the
+# ReferenceGrant in 03-referencegrant.yaml.
+#
+# Matches what discussion.md established authn emits:
+#   iss: "krateo.io"  -> issuer must match exactly (not a reachable URL)
+#   no aud            -> `audiences` omitted => audience check disabled
+#   exp present       -> validated (exp is a required claim by default)
+#   RS256 + kid       -> verifiable against the JWKS
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: authn-jwt
+  namespace: kagent
+spec:
+  # Attach to the Gateway so every route through it requires a valid JWT.
+  # (targetRefs has no namespace field: the target must be in this namespace.)
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-gateway
+  traffic:
+    jwtAuthentication:
+      # Strict: a valid bearer token is required for every request.
+      # Use Optional to allow tokenless requests, Permissive to decode-only.
+      mode: Strict
+      providers:
+        - issuer: "krateo.io"
+          # audiences omitted on purpose -> authn emits no `aud`, so any
+          # (missing) audience is accepted.
+          jwks:
+            remote:
+              jwksPath: /.well-known/jwks.json
+              cacheDuration: 5m
+              backendRef:
+                group: ""
+                kind: Service
+                name: authn
+                namespace: krateo-system
+                port: 8082
+      # Token location defaults to `Authorization: Bearer <token>`.

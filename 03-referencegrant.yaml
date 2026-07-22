@@ -1,0 +1,21 @@
+# ReferenceGrant — authorizes the JWT policy (in kagent) to fetch the JWKS from
+# the authn Service in krateo-system.
+#
+# Cross-namespace references in the Gateway API are denied by default; the
+# owner of the *target* namespace (krateo-system) must opt in. This grant lets
+# AgentgatewayPolicy objects in `kagent` reference core Services in
+# `krateo-system` — scoped to the authn Service by name.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: kagent-jwt-to-authn
+  namespace: krateo-system
+spec:
+  from:
+    - group: agentgateway.dev
+      kind: AgentgatewayPolicy
+      namespace: kagent
+  to:
+    - group: ""
+      kind: Service
+      name: authn
