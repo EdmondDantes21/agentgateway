@@ -97,12 +97,16 @@ helm install kagent-crds oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds \
 
 ```sh
 export GEMINI_API_KEY="your-api-key-here"
+```
 
+```sh
 helm install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
   --namespace kagent \
   --set providers.default=gemini \
   --set providers.gemini.apiKey=$GEMINI_API_KEY
 ```
+
+We're using Gemini, but nothing here depends on it — OpenAI, Anthropic, Bedrock, Ollama and others work too. Just swap `providers.default` and the matching key; see the [supported providers docs](https://kagent.dev/docs/kagent/supported-providers).
 
 kagent ships with some demo agents. Clear them out — we're building our own:
 
@@ -337,7 +341,7 @@ EOF
 Now the JWT check — the crypto turned into config. `mode: Strict` means no token, no entry. It fetches authn's public keys from the JWKS endpoint, matches the issuer, and (because authn emits no `aud`) sets no audiences:
 
 ```sh
-kubectl apply -f - <<EOF
+kubectl apply -f - <<'EOF'
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:
@@ -363,27 +367,6 @@ spec:
                 name: authn                    # authn's Service
                 namespace: krateo-system       # in its namespace
                 port: 8082
-EOF
-```
-
-The policy lives in `kagent` but the `authn` service lives in `krateo-system`, and cross-namespace references are denied by default. A ReferenceGrant opens exactly that one door:
-
-```sh
-kubectl apply -f - <<EOF
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: kagent-jwt-to-authn
-  namespace: krateo-system              # lives in authn's namespace (the one being referenced)
-spec:
-  from:
-    - group: agentgateway.dev
-      kind: AgentgatewayPolicy
-      namespace: kagent                 # the JWT policy over in kagent...
-  to:
-    - group: ""
-      kind: Service
-      name: authn                       # ...is allowed to point at this authn Service
 EOF
 ```
 
@@ -485,7 +468,7 @@ The tool call travels: user → gateway → controller → agent → BACK throug
 - proxy.url — routes agent egress back through the gateway, so the tool call is visible at all.
 - KAGENT_PROPAGATE_TOKEN — the agent re-attaches the token on its outbound tool call.
 
-Set the three controller-side switches. Note `proxy.url` is GLOBAL — once set, all agent egress flows through the gateway. That fact comes back hard in Layer 3:
+Set the three controller-side switches. Note `proxy.url` is GLOBAL — once set, all agent egress flows through the gateway. That fact comes back in Layer 3:
 
 ```sh
 helm upgrade kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
@@ -522,8 +505,17 @@ EOF
 Tell the Kubernetes agent to forward the token onto its own tool calls:
 
 ```sh
-kubectl patch agent k8s-a2a-agent -n kagent --type merge -p \
-  '{"spec":{"declarative":{"deployment":{"env":[{"name":"KAGENT_PROPAGATE_TOKEN","value":"true"}]}}}}'
+kubectl patch agent k8s-a2a-agent -n kagent --type merge -p '{
+  "spec": {
+    "declarative": {
+      "deployment": {
+        "env": [
+          {"name": "KAGENT_PROPAGATE_TOKEN", "value": "true"}
+        ]
+      }
+    }
+  }
+}'
 ```
 
 Last, teach the gateway to speak MCP to the tool server, and route the proxied tool calls (stamped `x-kagent-host: kagent-tools.kagent`) to it:
@@ -723,14 +715,10 @@ spec:
 EOF
 ```
 
-Confirm the controller wired it as a remote A2A tool pointed at the gateway:
+Wait for the k8s-a2a-agent to be recreated by the kagent controller:
 
 ```sh
 kubectl -n kagent rollout status deploy/k8s-a2a-agent
-kubectl -n kagent get cm k8s-a2a-agent -o jsonpath='{.data}' | grep -o 'remote_agents.*helm[^}]*}' | head
-# expect a remote_agents entry with
-#   "url": "http://agent-gateway.kagent.svc.cluster.local:8080"
-#   "headers": {"x-kagent-host": "helm-a2a-agent.kagent"}
 ```
 
 Give the Helm agent the token-forwarding env too, so once it's reached it can carry the caller's token onto its OWN tool calls (this is the fix for the Layer 2 heads-up):
